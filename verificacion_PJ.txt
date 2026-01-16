@@ -1,0 +1,127 @@
+tengo 53 campos en una tabla en la cuales estas tablas esta enumerados los estoy enumerando del 0-53, lo que se requiere es validar que los campos no contengan datos null o vacio. 
+Para ello se requiere agregar un nuevo campo en la cual me facilite realizar un filtrado para mostrar cuales tuenes serian observaciones:
+Campos	Código
+CODIGO	0
+FECHA_ULTIMA_TRANSACCION	1
+TIPO_CUENTA_ULTIMA_TRANSACCION	2
+CANAL_ATENCION_ULT_TRANS	3
+RAZON_SOCIAL	4
+TIPO_SOCIEDAD_COMERCIAL	5
+CODIGO_ACTIVIDAD_ECONOMICA	6
+DESCRIPCION_ACTIVIDAD_ECONOMICA	7
+IDENTIFICACION_CANT_INT_ALTA_GERENCIA	8
+CARGO_ALTA_GERENCIA	9
+NOMBRES_APELLIDOS_CARGO_GERENCIA	10
+TIPO_DOC_ID	11
+NRO_DOC_ID	12
+EXT_DOC_ID	13
+NIT	14
+NUMERO_REGISTRO	15
+DOMICILIO	16
+TELEFONO	17
+REFERENCIAS_COMERCIALES	18
+CLASIFICACION_TIPO_RIESGO	19
+CODIGO_REP_LEGAL	20
+NOMBRE_REP_LEGAL	21
+NACIONALIDAD_REP_LEGAL	22
+PAIS_RESIDENCIA_REP_LEGAL	23
+TIPO_DOCUMENTO_IDENT_REP_LEGAL	24
+DOCUMENTO_IDENTIDAD_REP_LEGAL	25
+EXP_DOCUMENTO_IDENTIDAD_REP_LEGAL	26
+NIT_REP_LEGAL	27
+FECHA_NACIMIENTO_REP_LEGAL	28
+ESTADO_CIVIL_REP_LEGAL	29
+NOMBRE_CONYUGE_REP_LEGAL	30
+DOMICILIO_PARTICULAR_REP_LEGAL	31
+DOMICILIO_COMERCIAL_REP_LEGAL	32
+TELEFONO_REP_LEGAL	33
+CORREO_ELECTRONICO_REP_LEGAL	34
+PROFESION_REP_LEGAL	35
+CODIGO_ACTIVIDAD_ECO_REP_LEGAL	36
+DESC_ACTIVIDAD_ECO_REP_LEGAL	37
+LUGAR_TRABAJO_REP_LEGAL	38
+CARGO_REP_LEGAL	39
+FECHA_INGRESO_TRABAJO_REP_LEGAL	40
+MONEDA_NIVEL_INGRESOS_REP_LEGAL	41
+NIVEL_INGRESOS_REP_LEGAL	42
+NIVEL_INGRESOS_REP_LEGAL_SUS	43
+FECHA_INGRESO_TRAB_REP_LEGAL	44
+REFERENCIAS_PERS_REP_LEGAL	45
+REFERENCIAS_COM_REP_LEGAL	46
+REFERENCIAS_BANCARIAS_REP_LEGAL	47
+TIPO_RIESGO_REP_LEGAL	48
+PAF_ALTA	49
+FECHA_ALTA	50
+OPERACION_ASOCIADA_ALTA	51
+FECHA_ULTIMA_ACTUALIZACION	52
+CANTIDAD_ACTUALIZACIONES	53
+
+
+*uno: necesito que los siguientes campos tendrian que tener datos (Obligados) y no estar null o vacio:
+
+CODIGO, TIPO_SOCIEDAD_COMERCIAL, CODIGO_ACTIVIDAD_ECONOMICA, DESCRIPCION_ACTIVIDAD_ECONOMICA, NIT, REFERENCIAS_COMERCIALES, PAF_ALTA, FECHA_ALTA, OPERACION_ASOCIADA_ALTA
+
+*dos: Si un campo principal está vacío o nulo, se genera una observación para ese campo.
+Si el campo principal tiene datos, entonces todos los campos dependientes también deben tener datos válidos.
+Si alguno de los dependientes está vacío o nulo, se genera una observación específica indicando cuál campo falta.
+Si tanto el campo principal como los dependientes están vacíos, se genera observación para el campo principal (porque no cumple la condición mínima).
+
+RAZON_SOCIAL	Datos inconsistentes
+IDENTIFICACION_CANT_INT_ALTA_GERENCIA	Si 9 y 10 esta lleno (Obligatorio, numerico), 
+CARGO_ALTA_GERENCIA	Si 8 y 10 esta lleno (Obligatorio), debe ser el 8 mayor a 0
+NOMBRES_APELLIDOS_CARGO_GERENCIA	Si 8 y 9 esta lleno (Obligatorio), debe ser el 8 mayor a 0
+TIPO_DOC_ID	Si 10 esta lleno
+NRO_DOC_ID	Si 10 esta lleno
+DOMICILIO	campos minimos y datos inconsistentes, observar generales
+NOMBRE_REP_LEGAL	Si tiene llenado el 20
+NACIONALIDAD_REP_LEGAL	Si tiene llenado el 20
+PAIS_RESIDENCIA_REP_LEGAL	Si tiene llenado el 20
+FECHA_NACIMIENTO_REP_LEGAL	Si tiene llenado el 20
+ESTADO_CIVIL_REP_LEGAL	Si tiene llenado el 30
+NOMBRE_CONYUGE_REP_LEGAL	Si tiene llenado el 29 como casada, concubina, etc
+DOMICILIO_PARTICULAR_REP_LEGAL	Si tiene llenado el 20 campos minimos y datos inconsistentes, observar generales
+PROFESION_REP_LEGAL	Si tiene llenado el 20
+CODIGO_ACTIVIDAD_ECO_REP_LEGAL	Si tiene llenado el 20
+DESC_ACTIVIDAD_ECO_REP_LEGAL	Si tiene llenado el 20
+LUGAR_TRABAJO_REP_LEGAL	Si tiene llenado el 20, datos inconsistentes
+CARGO_REP_LEGAL	Si tiene llenado el 20, datos inconsistentes
+NIVEL_INGRESOS_REP_LEGAL	Si tiene llenado el 20
+NIVEL_INGRESOS_REP_LEGAL_SUS	Si tiene llenado el 20
+FECHA_INGRESO_TRAB_REP_LEGAL	Si tiene llenado el 20
+
+tres: Los siguientes campos pueden estar vacíos o nulos sin que eso sea un error por sí mismo; sin embargo:
+Si el campo principal tiene datos, entonces
+los campos de los que depende deben tener datos válidos.
+Si el campo principal tiene datos pero los campos dependientes están vacíos o nulos,
+se debe generar una observación indicando qué campo dependiente falta.
+Si el campo principal está vacío, no es error,
+pero si los dependientes tienen datos, también se debe generar una observación:
+“el dependiente tiene datos pero el principal no”.
+
+FECHA_ULTIMA_TRANSACCION	"Si 2 y 3 esta lleno (Obligatorio)
+Formato fecha, no considerar la generica"
+TIPO_CUENTA_ULTIMA_TRANSACCION	Si 1 y 3 esta lleno (Obligatorio)
+CANAL_ATENCION_ULT_TRANS	Si 1 y 2 esta lleno (Obligatorio)
+TELEFONO	Datos inconsistentes
+CODIGO_REP_LEGAL	Si tiene llenado el 21
+TIPO_DOCUMENTO_IDENT_REP_LEGAL	Si tiene llenado el 20
+DOCUMENTO_IDENTIDAD_REP_LEGAL	Si tiene llenado el 20
+TELEFONO_REP_LEGAL	Datos inconsistentes
+CORREO_ELECTRONICO_REP_LEGAL	Inconsistencia en el llenado, por ejemplo sin @
+FECHA_INGRESO_TRABAJO_REP_LEGAL	Si tiene llenado el 20, formato fecha
+MONEDA_NIVEL_INGRESOS_REP_LEGAL	Si tiene llenado el 20
+REFERENCIAS_PERS_REP_LEGAL	Uno de los 45 o 46 o 47 (debe tener nombre y telefono), si tiene llenado el 20
+REFERENCIAS_COM_REP_LEGAL	Uno de los 45 o 46 o 47 (debe tener nombre y telefono), si tiene llenado el 20
+REFERENCIAS_BANCARIAS_REP_LEGAL	Uno de los 45 o 46 o 47 (debe tener nombre y telefono), si tiene llenado el 20
+TIPO_RIESGO_REP_LEGAL	Si tiene llenado el 20
+FECHA_ULTIMA_ACTUALIZACION	Mayor o igual a la fecha del 50
+CANTIDAD_ACTUALIZACIONES	SI 52 ES LLENO, ESTE CAMPO MAYOR A 1
+
+cuatro: los siguientes campos puede que tengas datos cono no pueda que tegan datos pero si no tienes ya seria observacion y no cuenta con ninguna condicion.
+
+EXT_DOC_ID	13
+NUMERO_REGISTRO	15
+CLASIFICACION_TIPO_RIESGO	19
+EXP_DOCUMENTO_IDENTIDAD_REP_LEGAL	26
+NIT_REP_LEGAL	27
+DOMICILIO_COMERCIAL_REP_LEGAL	32
