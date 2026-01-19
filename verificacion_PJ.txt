@@ -125,3 +125,38 @@ CLASIFICACION_TIPO_RIESGO	19
 EXP_DOCUMENTO_IDENTIDAD_REP_LEGAL	26
 NIT_REP_LEGAL	27
 DOMICILIO_COMERCIAL_REP_LEGAL	32
+
+%pyspark
+from pyspark.sql import SparkSession
+from pyspark.sql.functions import *
+import datetime
+from datetime import datetime, timedelta
+from pyspark.sql.window import Window
+from pyspark.sql.types import (
+    StructType, StructField, StringType, IntegerType, TimestampType
+)
+from pyspark.sql.types import ArrayType
+from pyspark.sql.functions import from_json, lit
+
+import re
+
+fech_par = '20250630'
+
+spark = SparkSession \
+    .builder \
+    .appName("verf_campos_pj") \
+    .config("spark.sql.session.locale", "es") \
+    .getOrCreate()
+
+spark.conf.set("spark.sql.legacy.parquet.datetimeRebaseModeInRead", "LEGACY")
+spark.conf.set("spark.sql.legacy.parquet.int96RebaseModeInRead", "LEGACY")
+spark.conf.set("spark.sql.legacy.timeParserPolicy", "LEGACY")
+spark.conf.set("spark.sql.parquet.enableVectorizedReader", "false")
+spark.conf.set("spark.sql.legacy.parquet.enableDecimal128", "true")
+spark.conf.set("spark.sql.files.ignoreCorruptFiles", "true")
+
+df_tip_pj = spark.read \
+    .format("csv") \
+    .option("header", "true") \
+    .option("delimiter", ";") \
+    .load(f"/user/T45109/AD/VerfCamposPJ/ANEXO2_PERSONA_JURIDICA_20251130.csv")
