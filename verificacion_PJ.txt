@@ -160,3 +160,335 @@ df_tip_pj = spark.read \
     .option("header", "true") \
     .option("delimiter", ";") \
     .load(f"/user/T45109/AD/VerfCamposPJ/ANEXO2_PERSONA_JURIDICA_20251130.csv")
+
+
+# ============================================================
+# Mapeo índice <-> campo (confirmado por Ribery)
+# ============================================================
+idx_to_field = {
+    0:"CODIGO",1:"FECHA_ULTIMA_TRANSACCION",2:"TIPO_CUENTA_ULTIMA_TRANSACCION",
+    3:"CANAL_ATENCION_ULT_TRANS",4:"RAZON_SOCIAL",5:"TIPO_SOCIEDAD_COMERCIAL",
+    6:"CODIGO_ACTIVIDAD_ECONOMICA",7:"DESCRIPCION_ACTIVIDAD_ECONOMICA",8:"IDENTIFICACION_CANT_INT_ALTA_GERENCIA",
+    9:"CARGO_ALTA_GERENCIA",10:"NOMBRES_APELLIDOS_CARGO_GERENCIA",11:"TIPO_DOC_ID",12:"NRO_DOC_ID",
+    13:"EXT_DOC_ID",14:"NIT",15:"NUMERO_REGISTRO",16:"DOMICILIO",17:"TELEFONO",18:"REFERENCIAS_COMERCIALES",
+    19:"CLASIFICACION_TIPO_RIESGO",20:"CODIGO_REP_LEGAL",21:"NOMBRE_REP_LEGAL",22:"NACIONALIDAD_REP_LEGAL",
+    23:"PAIS_RESIDENCIA_REP_LEGAL",24:"TIPO_DOCUMENTO_IDENT_REP_LEGAL",25:"DOCUMENTO_IDENTIDAD_REP_LEGAL",
+    26:"EXP_DOCUMENTO_IDENTIDAD_REP_LEGAL",27:"NIT_REP_LEGAL",28:"FECHA_NACIMIENTO_REP_LEGAL",
+    29:"ESTADO_CIVIL_REP_LEGAL",30:"NOMBRE_CONYUGE_REP_LEGAL",31:"DOMICILIO_PARTICULAR_REP_LEGAL",
+    32:"DOMICILIO_COMERCIAL_REP_LEGAL",33:"TELEFONO_REP_LEGAL",34:"CORREO_ELECTRONICO_REP_LEGAL",
+    35:"PROFESION_REP_LEGAL",36:"CODIGO_ACTIVIDAD_ECO_REP_LEGAL",37:"DESC_ACTIVIDAD_ECO_REP_LEGAL",
+    38:"LUGAR_TRABAJO_REP_LEGAL",39:"CARGO_REP_LEGAL",40:"FECHA_INGRESO_TRABAJO_REP_LEGAL",
+    41:"MONEDA_NIVEL_INGRESOS_REP_LEGAL",42:"NIVEL_INGRESOS_REP_LEGAL",43:"NIVEL_INGRESOS_REP_LEGAL_SUS",
+    44:"FECHA_INGRESO_TRAB_REP_LEGAL",45:"REFERENCIAS_PERS_REP_LEGAL",46:"REFERENCIAS_COM_REP_LEGAL",
+    47:"REFERENCIAS_BANCARIAS_REP_LEGAL",48:"TIPO_RIESGO_REP_LEGAL",49:"PAF_ALTA",50:"FECHA_ALTA",
+    51:"OPERACION_ASOCIADA_ALTA",52:"FECHA_ULTIMA_ACTUALIZACION",53:"CANTIDAD_ACTUALIZACIONES"
+}
+field_to_idx = {v: k for k, v in idx_to_field.items()}
+
+# ============================================================
+# Categorías oficiales definidas por Ribery
+# ============================================================
+
+# ---- CAMP_OBLIGADO ----
+CAMP_OBLIGADO = [
+    "CODIGO","TIPO_SOCIEDAD_COMERCIAL","CODIGO_ACTIVIDAD_ECONOMICA",
+    "DESCRIPCION_ACTIVIDAD_ECONOMICA","NIT","REFERENCIAS_COMERCIALES",
+    "PAF_ALTA","FECHA_ALTA","OPERACION_ASOCIADA_ALTA"
+]
+
+# ---- CAMP_CONDICIONAL ----
+CAMP_CONDICIONAL = [
+    "RAZON_SOCIAL",
+    "IDENTIFICACION_CANT_INT_ALTA_GERENCIA", "CARGO_ALTA_GERENCIA",
+    "NOMBRES_APELLIDOS_CARGO_GERENCIA",
+    "TIPO_DOC_ID","NRO_DOC_ID","DOMICILIO",
+    "NOMBRE_REP_LEGAL","NACIONALIDAD_REP_LEGAL",
+    "PAIS_RESIDENCIA_REP_LEGAL","FECHA_NACIMIENTO_REP_LEGAL",
+    "ESTADO_CIVIL_REP_LEGAL","NOMBRE_CONYUGE_REP_LEGAL",
+    "DOMICILIO_PARTICULAR_REP_LEGAL","PROFESION_REP_LEGAL",
+    "CODIGO_ACTIVIDAD_ECO_REP_LEGAL","DESC_ACTIVIDAD_ECO_REP_LEGAL",
+    "LUGAR_TRABAJO_REP_LEGAL","CARGO_REP_LEGAL",
+    "NIVEL_INGRESOS_REP_LEGAL","NIVEL_INGRESOS_REP_LEGAL_SUS",
+    "FECHA_INGRESO_TRAB_REP_LEGAL"
+]
+
+# ---- CAMP_OPC_CONDICIONAL ----
+CAMP_OPC_CONDICIONAL = [
+    "FECHA_ULTIMA_TRANSACCION","TIPO_CUENTA_ULTIMA_TRANSACCION",
+    "CANAL_ATENCION_ULT_TRANS","TELEFONO","CODIGO_REP_LEGAL",
+    "TIPO_DOCUMENTO_IDENT_REP_LEGAL","DOCUMENTO_IDENTIDAD_REP_LEGAL",
+    "TELEFONO_REP_LEGAL","CORREO_ELECTRONICO_REP_LEGAL",
+    "FECHA_INGRESO_TRABAJO_REP_LEGAL","MONEDA_NIVEL_INGRESOS_REP_LEGAL",
+    "REFERENCIAS_PERS_REP_LEGAL","REFERENCIAS_COM_REP_LEGAL",
+    "REFERENCIAS_BANCARIAS_REP_LEGAL","TIPO_RIESGO_REP_LEGAL",
+    "FECHA_ULTIMA_ACTUALIZACION","CANTIDAD_ACTUALIZACIONES"
+]
+
+# ---- CAMP_OPCIONAL ----
+CAMP_OPCIONAL = [
+    "EXT_DOC_ID","NUMERO_REGISTRO","CLASIFICACION_TIPO_RIESGO",
+    "EXP_DOCUMENTO_IDENTIDAD_REP_LEGAL","NIT_REP_LEGAL",
+    "DOMICILIO_COMERCIAL_REP_LEGAL"
+]
+
+
+# ============================================================
+# Regex para inconsistencia universal para *todos* los campos
+# ============================================================
+REGEX_PALABRA_INVALIDA = (
+    r"(?i)\b("
+    r"no tiene|no especifica|no existe|no contiene|sin informacion|sin información|"
+    r"desconocido|n/a|na|null|ninguno|sin dato|dato no disponible|no aplica|"
+    r"no corresponde|no registrado|no declarado|no proveído|no proporcionado|"
+    r"información no disponible|información desconocida|s/d|s/n|sn"
+    r")\b"
+)
+
+# ============================================================
+# Funciones base NULL / VACÍO
+# ============================================================
+def is_null(c):
+    return col(c).isNull()
+
+def is_vacio(c):
+    return (~col(c).isNull()) & (trim(col(c)) == "")
+
+def is_empty(c):
+    return is_null(c) | is_vacio(c)
+
+# ============================================================
+# Funciones base numéricas, fechas, limpieza
+# ============================================================
+def only_digits_str(c):
+    return regexp_replace(col(c), r'[^0-9]', '')
+
+def numeric_str_to_double(c):
+    x = regexp_replace(col(c), r'[^0-9,\.\-]', '')
+    has_comma = x.rlike(',')
+    has_dot   = x.rlike('\.')
+    pos_comma = instr(x, ',')
+    pos_dot   = instr(x, '.')
+
+    estilo_us = has_comma & has_dot & (pos_dot > pos_comma)
+    estilo_eu = has_comma & has_dot & (pos_comma > pos_dot)
+
+    norm_us = regexp_replace(x, r',', '')
+    norm_eu = regexp_replace(regexp_replace(x, r'\.', ''), r',', '.')
+    norm_only_comma = regexp_replace(x, r',', '.')
+    norm_only_dot = x
+
+    normalized = (
+        when(estilo_us, norm_us)
+        .when(estilo_eu, norm_eu)
+        .when(has_comma & ~has_dot, norm_only_comma)
+        .when(has_dot & ~has_comma, norm_only_dot)
+        .otherwise(x)
+    )
+
+    normalized = regexp_replace(normalized, r'(?<!^)-', '')
+    normalized = regexp_replace(normalized, r'\.(?=.*\.)', '')
+    normalized = regexp_replace(normalized, r'^-$', '0')
+    normalized = regexp_replace(normalized, r'^\.$', '0')
+
+    return normalized.cast("double")
+
+def parsed_date_ddmmyyyy(c):
+    return to_date(col(c), "dd/MM/yyyy")
+
+def is_bad_date_ddmmyyyy(c):
+    d = parsed_date_ddmmyyyy(c)
+    GENERIC = {'00/00/0000','31/12/9999','01/01/1800'}
+    is_gen = upper(trim(col(c))).isin([g.upper() for g in GENERIC])
+    return is_empty(c) | is_gen | d.isNull() | (d > current_date())
+
+# ============================================================
+# Estructura de observación (para los siguientes bloques)
+# ============================================================
+OBS_STRUCT = StructType([
+    StructField("idx", IntegerType(), False),
+    StructField("campo", StringType(), False),
+    StructField("motivo", StringType(), False),
+    StructField("tipo", StringType(), False),
+])
+
+OBS_ARRAY_EMPTY = from_json(lit("[]"), ArrayType(OBS_STRUCT))
+
+
+
+# ============================================================
+# BLOQUE 2 - VALIDADORES ESPECIALIZADOS + INCONSISTENCIA GLOBAL
+# ============================================================
+
+#from pyspark.sql.functions import col, lit, when, upper, trim, length, regexp_replace, to_date, current_date, array, struct, expr
+
+# -----------------------------------------------------------------------------
+# Etiquetas de tipo (para categorizar cada observación)
+# -----------------------------------------------------------------------------
+TIPO_OBLIGADO          = "CAMP_OBLIGADO"
+TIPO_CONDICIONAL       = "CAMP_CONDICIONAL"
+TIPO_OPC_CONDICIONAL   = "CAMP_OPC_CONDICIONAL"
+TIPO_OPCIONAL          = "CAMP_OPCIONAL"
+
+# -----------------------------------------------------------------------------
+# Listas de ayuda
+# -----------------------------------------------------------------------------
+ALL_FIELDS = [idx_to_field[i] for i in sorted(idx_to_field.keys())]
+
+# (Para numéricos opcionales con reglas de secuencia/repetidos)
+OPC_SIMPL_NUMERICOS = {"NUMERO_REGISTRO","NIT_REP_LEGAL"}
+
+# Teclado y excepciones
+KEYBOARD_BAD = ['ASDF', 'QWERTY', 'ZXCV', 'QAZ', 'WSX', 'EDC', 'RFV', 'TGB', 'YHN', 'UJM']
+EXC_2L = {'JR','SR','DR'}
+
+def obs_array(nm, motivo, tipo):
+    return array(struct(
+        lit(field_to_idx.get(nm, -1)).alias("idx"),
+        lit(nm).alias("campo"),
+        lit(motivo).alias("motivo"),
+        lit(tipo).alias("tipo")
+    ))
+
+def obs_when(cond, nm, motivo, tipo):
+    # Devuelve [] si no se cumple, o [struct(...)] si se cumple
+    return when(cond, obs_array(nm, motivo, tipo)).otherwise(OBS_ARRAY_EMPTY)
+
+def upper_trim(c):
+    return upper(trim(col(c)))
+
+def tipo_por_campo(nm: str) -> str:
+    if nm in CAMP_OBLIGADO:
+        return TIPO_OBLIGADO
+    if nm in CAMP_CONDICIONAL:
+        return TIPO_CONDICIONAL
+    if nm in CAMP_OPC_CONDICIONAL:
+        return TIPO_OPC_CONDICIONAL
+    if nm in CAMP_OPCIONAL:
+        return TIPO_OPCIONAL
+    # Fallback por si en el futuro se añade un campo no categorizado
+    return TIPO_OPCIONAL
+
+# -----------------------------------------------------------------------------
+# Helper: combinar arrays de observaciones en una sola columna
+# -----------------------------------------------------------------------------
+def _combine_obs_cols(df, obs_col_list):
+    """
+    Toma una lista de Column (cada una es Array<OBS_STRUCT>) y devuelve df con columna única:
+    OBS_DETALLE_GLOBAL = flatten(array(obs0, obs1, ...))
+    """
+    if not obs_col_list:
+        return df.withColumn("OBS_DETALLE_GLOBAL", OBS_ARRAY_EMPTY)
+
+    df2 = df
+    tmp_names = []
+    for i, c in enumerate(obs_col_list):
+        nm = f"_obs_glb_{i}"
+        df2 = df2.withColumn(nm, c)
+        tmp_names.append(nm)
+
+    arr_expr = "array({})".format(", ".join(tmp_names))
+    df2 = df2.withColumn("OBS_DETALLE_GLOBAL", expr(f"flatten({arr_expr})"))
+
+    # Limpiar temporales
+    for nm in tmp_names:
+        df2 = df2.drop(nm)
+
+    return df2
+
+# -----------------------------------------------------------------------------
+# VALIDADORES ESPECIALIZADOS (no incluyen NULL/VACÍO; eso se trata aparte)
+# -----------------------------------------------------------------------------
+def letras_repetidas(c, min_rep=4):
+    # AAAA, zzzz, etc. (solo si trae contenido)
+    s = upper_trim(c)
+    return (~is_empty(c)) & s.rlike(r"([A-ZÁÉÍÓÚÜÑ])\1{" + str(min_rep-1) + r",}")
+
+# Secuencias ascend/descend + repetidos (sin "Column is not iterable")
+_ASC_SEQ_PATTERNS = ['0123','1234','2345','3456','4567','5678','6789','7890','8901','9012']
+_DESC_SEQ_PATTERNS= ['9876','8765','7654','6543','5432','4321','3210','2109','1098','0987']
+_ASC_REGEX = "(" + "|".join(_ASC_SEQ_PATTERNS) + ")"
+_DESC_REGEX= "(" + "|".join(_DESC_SEQ_PATTERNS) + ")"
+
+def numeric_seq_or_repeat(c, min_len=4):
+    d = only_digits_str(c)
+    len_ok = length(d) >= min_len
+    repetido = d.rlike(r"^(\d)\1{" + str(min_len-1) + r",}$")      # 1111, 22222
+    asc = d.rlike(_ASC_REGEX)                                      # 1234, 6789, 8901...
+    desc = d.rlike(_DESC_REGEX)                                    # 9876, 6543, 2109...
+    return (~is_empty(c)) & len_ok & (repetido | asc | desc)
+
+def text_invalido(c, min_len=3):
+    """
+    Inconsistencia textual (SOLO si hay contenido):
+      - Palabras inválidas (placeholders)
+      - Demasiado corto
+      - Solo dígitos
+      - Repeticiones
+      - Sin vocales (>=3 letras)
+      - Patrones de teclado
+    """
+    s = upper_trim(c)
+    tiene = ~is_empty(c)
+
+    too_short    = (length(trim(col(c))) < min_len)
+    only_digits  = (length(regexp_replace(col(c), r'[0-9]', '')) == 0)
+    rep_char     = s.rlike(r"(.)\1{3,}")
+    rep_seq      = s.rlike(r"^([A-Z0-9]{1,3})\1{2,}$")
+    letters      = regexp_replace(s, r'[^A-ZÁÉÍÓÚÜÑ]', '')
+    no_vowels    = (length(letters) >= 3) & (~letters.rlike(r"[AEIOUÁÉÍÓÚÜ]"))
+
+    any_kb = lit(False)
+    for kb in KEYBOARD_BAD:
+        any_kb = any_kb | s.contains(kb)
+
+    bad_word     = col(c).rlike(REGEX_PALABRA_INVALIDA)
+    two_letter_exc = (length(letters) == 2) & letters.isin(list(EXC_2L))
+
+    return tiene & (too_short | only_digits | rep_char | rep_seq | any_kb | (no_vowels & ~two_letter_exc) | bad_word)
+
+def domicilio_invalido(c, min_len=5):
+    """
+    Inconsistencia en domicilio: mínimo de longitud, no solo números, y regex maestro (placeholders, etc.)
+    SOLO si hay contenido.
+    """
+    s = trim(col(c))
+    tiene = ~is_empty(c)
+    only_digits = length(regexp_replace(s, r'[0-9]', '')) == 0
+    return tiene & ((length(s) < min_len) | only_digits | col(c).rlike(REGEX_PALABRA_INVALIDA))
+
+def email_invalido(c):
+    # inválido solo si viene lleno
+    return when(is_empty(c), lit(False)).otherwise(
+        ~col(c).rlike(r"^[A-Za-z0-9._%+\-]{3,}@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}$") |
+        col(c).rlike(r"(?i)(.)\1{3,}") |   # 4 repeticiones
+        col(c).rlike(r"^[0-9]+@")          # usuario solo dígitos
+    )
+
+def phone_invalido(c):
+    digits = only_digits_str(c)
+    all_same = digits.rlike(r"^([0-9])\1+$")  # 00000000, 55555555
+    return when(is_empty(c), lit(False)).otherwise(
+        (length(digits) < 7) | (length(digits) > 8) | all_same
+    )
+
+def opc_texto_inconsistente(c):
+    # Para campos opcionales textuales cuando tienen dato
+    return text_invalido(c, 3) | letras_repetidas(c, 4)
+
+def opc_num_inconsistente(c):
+    # Para opcionales numéricos cuando tienen dato
+    return numeric_seq_or_repeat(c, 4)
+
+# --- Utilidad extra (si se requiere para ingresos) ---
+def _is_nonneg_number(c):
+    return (~is_empty(c)) & numeric_str_to_double(c).isNotNull() & (numeric_str_to_double(c) >= 0.0)
+
+def _is_pos_number(c):
+    return (~is_empty(c)) & numeric_str_to_double(c).isNotNull() & (numeric_str_to_double(c) > 0.0)
+
+# --- Validación formato NIT (conserva la lógica base que venías usando) ---
+def nit_formato_invalido(c):
+    d = only_digits_str(c)
+    ends_ok = d.rlike(r"(01|02|03|04)[1-9]$")
+    only_digits_same_len = (length(d) == length(regexp_replace(col(c), r'\s+', '')))
+    return (~is_empty(c)) & ((length(d) < 8) | (~ends_ok) | (~only_digits_same_len))
