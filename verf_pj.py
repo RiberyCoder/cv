@@ -726,9 +726,65 @@ df_detalle_observaciones = (
         "NIT",
         col("obs.idx").alias("IDX_CAMPO"),
         col("obs.campo").alias("CAMPO"),
-        col("obs.tipo").alias("TIPO_VALIDACION"),
+        col("obs.tipo").alias("TIPO_VERIFICACION"),
         col("obs.severidad").alias("SEVERIDAD"),
         col("obs.motivo").alias("DESCRIPCION")
+    )
+    .orderBy("CODIGO", "IDX_CAMPO")
+)
+
+# DataFrame con formato de reporte de auditoría (versión mejorada)
+df_reporte_auditoria = (
+    df_final
+    .select("CODIGO", explode("OBS_ARRAY").alias("obs"))
+    .select(
+        "CODIGO",
+        col("obs.idx").alias("IDX_CAMPO"),
+        col("obs.campo").alias("CAMPO"),
+        col("obs.tipo").alias("TIPO_VERIFICACION"),
+        # Categorizar la regla según el tipo
+        when(col("obs.tipo") == "NULL", lit("NULL"))
+        .when(col("obs.tipo") == "VACIO", lit("VACIO"))
+        .when(col("obs.tipo") == "CAMP_OBLIGADO", lit("OBLIGATORIO"))
+        .when(col("obs.tipo") == "CAMP_CONDICIONAL", lit("DEPENDE_DE"))
+        .when(col("obs.tipo") == "CAMP_OPC_CONDICIONAL", lit("FORMATO"))
+        .when(col("obs.tipo") == "CAMP_OPCIONAL", lit("INCONSISTENCIA"))
+        .otherwise(lit("OTRO"))
+        .alias("REGLA"),
+        # Descripción más amigable
+        when(col("obs.tipo") == "NULL", 
+             concat(col("obs.campo"), lit("_null")))
+        .when(col("obs.tipo") == "VACIO", 
+             concat(col("obs.campo"), lit("_vacio")))
+        .when(col("obs.tipo") == "CAMP_OBLIGADO", 
+             when(col("obs.motivo").contains("PALABRA_INVALIDA"), 
+                  lit("Contiene palabras no permitidas"))
+             .when(col("obs.motivo").contains("FALTANTE"), 
+                  lit("Campo obligatorio sin datos"))
+             .when(col("obs.motivo").contains("FORMATO_INVALIDO"), 
+                  lit("Formato inválido"))
+             .when(col("obs.motivo").contains("TEXTO_INVALIDO"), 
+                  lit("Texto con caracteres o patrones inválidos"))
+             .otherwise(col("obs.motivo")))
+        .when(col("obs.tipo") == "CAMP_CONDICIONAL",
+             when(col("obs.motivo").contains("REQUERIDO_POR"), 
+                  regexp_replace(col("obs.motivo"), "_REQUERIDO_POR_", " requiere "))
+             .when(col("obs.motivo").contains("SIN_"), 
+                  regexp_replace(col("obs.motivo"), ".*_SIN_", "Requiere "))
+             .otherwise(regexp_replace(col("obs.motivo"), ".*_DEPENDE_DE_", "Requiere ")))
+        .when(col("obs.tipo") == "CAMP_OPC_CONDICIONAL",
+             when(col("obs.motivo").contains("EMAIL"), lit("Email inválido"))
+             .when(col("obs.motivo").contains("TELEFONO"), lit("Teléfono inválido"))
+             .when(col("obs.motivo").contains("FORMATO"), lit("Formato inválido"))
+             .when(col("obs.motivo").contains("REQUERIDO"), 
+                  regexp_replace(col("obs.motivo"), "_REQUERIDO.*", " es requerido"))
+             .otherwise(col("obs.motivo")))
+        .when(col("obs.tipo") == "CAMP_OPCIONAL",
+             when(col("obs.motivo").contains("TEXTO_INVALIDO"), 
+                  lit("Texto con inconsistencias"))
+             .otherwise(col("obs.motivo")))
+        .otherwise(col("obs.motivo"))
+        .alias("DESCRIPCION")
     )
     .orderBy("CODIGO", "IDX_CAMPO")
 )
@@ -805,6 +861,23 @@ df_detalle_observaciones.groupBy("CAMPO").count() \
     .limit(10) \
     .show(truncate=False)
 
+print("\n" + "-"*80)
+print("CALIDAD DE DATOS POR CAMPO (Resumen)")
+print("-"*80)
+
+df_resumen_por_campo.select(
+    "campo", "CATEGORIA", "PCT_COMPLETITUD", "CALIDAD_CAMPO", 
+    "CANT_NULL", "CANT_VACIO", "CANT_INCONSISTENTES"
+).orderBy(col("PCT_COMPLETITUD")).show(20, truncate=False)
+
+print("\n" + "-"*80)
+print("CAMPOS CRÍTICOS (Completitud < 40%)")
+print("-"*80)
+
+df_resumen_por_campo.filter(col("CALIDAD_CAMPO") == "CRÍTICA") \
+    .select("campo", "CATEGORIA", "PCT_COMPLETITUD", "CANT_NULL", "CANT_VACIO") \
+    .show(truncate=False)
+
 # ============================================================================
 # GUARDAR RESULTADOS
 # ============================================================================
@@ -824,6 +897,16 @@ print(f"✓ Resumen ejecutivo guardado en: {output_path}/resumen_ejecutivo")
 df_detalle_observaciones.write.mode("overwrite") \
     .parquet(f"{output_path}/detalle_observaciones")
 print(f"✓ Detalle observaciones guardado en: {output_path}/detalle_observaciones")
+
+# Guardar reporte de auditoría (formato tabla ejemplo)
+df_reporte_auditoria.write.mode("overwrite") \
+    .parquet(f"{output_path}/reporte_auditoria")
+print(f"✓ Reporte de auditoría guardado en: {output_path}/reporte_auditoria")
+
+# Guardar resumen por campo
+df_resumen_por_campo.write.mode("overwrite") \
+    .parquet(f"{output_path}/resumen_por_campo")
+print(f"✓ Resumen por campo guardado en: {output_path}/resumen_por_campo")
 
 # Guardar vistas específicas
 df_criticos.write.mode("overwrite") \
@@ -847,11 +930,56 @@ print("EJEMPLOS DE CONSULTAS PARA AUDITORÍA")
 print("="*80)
 
 print("""
+# =============================================================================
+# EJEMPLOS DE CONSULTAS CON EL NUEVO RESUMEN POR CAMPO
+# =============================================================================
+
+# 1. Ver resumen completo de calidad por campo:
+df_resumen_por_campo.show(54, False)
+
+# 2. Campos con peor calidad (más problemas):
+df_resumen_por_campo.orderBy(col("PCT_COMPLETITUD")).show(10, False)
+
+# 3. Campos obligatorios con problemas:
+df_resumen_por_campo.filter(col("CATEGORIA") == "OBLIGATORIO").show(False)
+
+# 4. Campos con más del 20% de datos nulos:
+df_resumen_por_campo.filter(col("PCT_NULL") > 20).show(False)
+
+# 5. Ver códigos ejemplo de un campo específico con nulls:
+df_resumen_por_campo.filter(col("campo") == "TELEFONO") \\
+    .select("campo", "CODIGOS_NULL_EJEMPLO", "CODIGOS_VACIO_EJEMPLO").show(False)
+
+# 6. Estadísticas por categoría:
+df_resumen_por_campo.groupBy("CATEGORIA").agg(
+    avg("PCT_COMPLETITUD").alias("PCT_COMPLETITUD_PROMEDIO"),
+    avg("PCT_NULL").alias("PCT_NULL_PROMEDIO"),
+    avg("PCT_INCONSISTENTE").alias("PCT_INCONSISTENTE_PROMEDIO")
+).show(False)
+
+# 7. Campos con excelente calidad:
+df_resumen_por_campo.filter(col("CALIDAD_CAMPO") == "EXCELENTE").show(False)
+
+# =============================================================================
+# EJEMPLOS CON OTROS DATAFRAMES
+# =============================================================================
+
 # Ver registros con campos obligatorios faltantes:
 df_resumen_ejecutivo.filter(col("CANT_OBLIGADOS_FALTANTES") > 0).show(5, False)
 
 # Ver detalle de un registro específico:
 df_detalle_observaciones.filter(col("CODIGO") == "TU_CODIGO").show(100, False)
+
+# Ver REPORTE DE AUDITORÍA formateado (como tu ejemplo):
+df_reporte_auditoria.filter(col("CODIGO") == "120974").show(100, False)
+
+# Filtrar por tipo de verificación:
+df_reporte_auditoria.filter(col("TIPO_VERIFICACION") == "NULL").show(20, False)
+df_reporte_auditoria.filter(col("TIPO_VERIFICACION") == "CAMP_CONDICIONAL").show(20, False)
+
+# Filtrar por regla:
+df_reporte_auditoria.filter(col("REGLA") == "DEPENDE_DE").show(20, False)
+df_reporte_auditoria.filter(col("REGLA") == "FORMATO").show(20, False)
 
 # Campos más problemáticos:
 df_detalle_observaciones.groupBy("CAMPO", "TIPO_VALIDACION") \\
@@ -862,4 +990,39 @@ df_resumen_ejecutivo.filter(col("OBS_INCONSISTENCIAS").contains("NIT_FORMATO_INV
 
 # Registros con más de 10 observaciones:
 df_resumen_ejecutivo.filter(col("CANT_TOTAL_OBS") > 10).orderBy(desc("CANT_TOTAL_OBS")).show(10, False)
+
+# =============================================================================
+# EXPORTAR A CSV/EXCEL
+# =============================================================================
+
+# Exportar reporte de auditoría a CSV para Excel:
+df_reporte_auditoria.coalesce(1).write.mode("overwrite") \\
+    .option("header", "true") \\
+    .option("delimiter", ";") \\
+    .csv(f"{output_path}/reporte_auditoria_csv")
+
+# Exportar resumen por campo a CSV:
+df_resumen_por_campo.coalesce(1).write.mode("overwrite") \\
+    .option("header", "true") \\
+    .option("delimiter", ";") \\
+    .csv(f"{output_path}/resumen_por_campo_csv")
+
+# Exportar resumen ejecutivo a CSV:
+df_resumen_ejecutivo.coalesce(1).write.mode("overwrite") \\
+    .option("header", "true") \\
+    .option("delimiter", ";") \\
+    .csv(f"{output_path}/resumen_ejecutivo_csv")
 """)
+
+
+# Campos con peor calidad
+df_resumen_por_campo.orderBy("PCT_COMPLETITUD").show(10, False)
+
+# Campos obligatorios problemáticos
+df_resumen_por_campo.filter(
+    (col("CATEGORIA") == "OBLIGATORIO") & 
+    (col("PCT_COMPLETITUD") < 95)
+).show(False)
+
+# Ver códigos ejemplo de un campo
+df_resumen_por_campo.filter(col("campo") == "TELEFONO_REP_LEGAL").show(1, False)
